@@ -30,6 +30,12 @@
                   app:layout_constraintStart_toStartOf="parent"
                   app:layout_constraintTop_toBottomOf="@id/trackSelectContainer"/>
 
+        <Button android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="播放下载内容"
+                app:layout_constraintStart_toStartOf="parent"
+                android:id="@+id/playDownloadBtn"
+                android:visibility="gone"
+                app:layout_constraintTop_toBottomOf="@id/debugText"/>
+
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 </ScrollView>
