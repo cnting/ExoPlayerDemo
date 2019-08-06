@@ -31,7 +31,6 @@ class VideoDownloadManager(val context: Context) {
         val downloadManager = DownloadManager(
             context, downloadIndex, DefaultDownloaderFactory(downloaderConstructorHelper)
         )
-//        downloadManager.requirements = Requirements(Requirements.NETWORK)
         downloadManager
     }
 
@@ -53,13 +52,13 @@ class VideoDownloadManager(val context: Context) {
         directionality!!
     }
 
-    private val downloadCache: Cache by lazy {
+    val downloadCache: Cache by lazy {
         val downloadContentDirectory = File(downloadDirectory, DOWNLOAD_CONTENT_DIRECTORY)
         val downloadCache = SimpleCache(downloadContentDirectory, NoOpCacheEvictor(), databaseProvider)
         downloadCache
     }
 
-    private val buildHttpDataSourceFactory: HttpDataSource.Factory by lazy {
+    val buildHttpDataSourceFactory: HttpDataSource.Factory by lazy {
         val factory = DefaultHttpDataSourceFactory(userAgent)
         factory
     }

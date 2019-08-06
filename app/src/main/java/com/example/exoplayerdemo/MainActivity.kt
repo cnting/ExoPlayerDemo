@@ -1,13 +1,18 @@
 package com.example.exoplayerdemo
 
+import android.media.session.PlaybackState
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.get
 import androidx.core.view.isEmpty
+import androidx.viewpager.widget.PagerAdapter
 import com.google.android.exoplayer2.*
 import com.google.android.exoplayer2.offline.Download
 import com.google.android.exoplayer2.offline.DownloadHelper
@@ -19,28 +24,76 @@ import com.google.android.exoplayer2.trackselection.MappingTrackSelector.MappedT
 import com.google.android.exoplayer2.ui.DebugTextViewHelper
 import com.google.android.exoplayer2.ui.DefaultTrackNameProvider
 import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory
+import com.google.android.exoplayer2.upstream.cache.CacheDataSourceFactory
 import com.google.android.exoplayer2.util.Util
 import kotlinx.android.synthetic.main.activity_main.*
-import kotlinx.android.synthetic.main.content_main.*
+import kotlinx.android.synthetic.main.activity_main.view.*
 import java.io.IOException
 import java.util.*
 
 class MainActivity : AppCompatActivity() {
 
-    val uri = Uri.parse("http://res.uquabc.com/HLS/playlist.m3u8")
-    //    val uri = Uri.parse("https://content.jwplatform.com/manifests/IPYHGrEj.m3u8")
+    private val uris = arrayOf(
+        Uri.parse("http://res.uquabc.com/HLS/playlist.m3u8"),
+        Uri.parse("https://content.jwplatform.com/manifests/IPYHGrEj.m3u8")
+    )
     private var downloadHelper: DownloadHelper? = null
     private var exoPlayer: SimpleExoPlayer? = null
+    private var debugTextViewHelper: DebugTextViewHelper? = null
+    private lateinit var downloadTracker: VideoDownloadTracker
+    private var uriIndex = 0
+    private var trackSelectContainer: LinearLayout? = null
+    private var downloadContainer: LinearLayout? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        setSupportActionBar(toolbar)
-        fab.setOnClickListener {
+        initViewPager()
+        downloadTracker = (application as App).videoDownloadManager.downloadTracker
+        initExoPlayer()
+        changeVideoBtn.setOnClickListener {
+            changeVideoBtn.text = "切换视频$uriIndex"
+            uriIndex = if (uriIndex == 0) {
+                1
+            } else {
+                0
+            }
+            exoPlayer?.release()
+            debugTextViewHelper?.stop()
             initExoPlayer()
         }
-        playDownloadBtn.setOnClickListener {
-            playDownloadContent()
+        loadHasDownloads()
+    }
+
+    private fun initViewPager() {
+        val title = arrayOf("切换清晰度", "已下载列表")
+        tabLayout.setupWithViewPager(viewPager)
+        viewPager.adapter = object : PagerAdapter() {
+            override fun isViewFromObject(view: View, `object`: Any): Boolean {
+                return view == `object`
+            }
+
+            override fun getCount(): Int {
+                return 2
+            }
+
+            override fun instantiateItem(container: ViewGroup, position: Int): Any {
+                val layout = LinearLayout(this@MainActivity)
+                layout.orientation = LinearLayout.VERTICAL
+                layout.layoutParams =
+                    ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                if (position == 0) {
+                    trackSelectContainer = layout
+                } else {
+                    downloadContainer = layout
+                }
+                container.addView(layout)
+                return layout
+            }
+
+            override fun getPageTitle(position: Int): CharSequence? {
+                return title[position]
+            }
         }
     }
 
@@ -48,40 +101,43 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         downloadHelper?.release()
         exoPlayer?.release()
+        debugTextViewHelper?.stop()
     }
 
     private fun initExoPlayer() {
         //轨道选择
         val trackSelector = DefaultTrackSelector()
 
+        val dataSourceFactory = DefaultDataSourceFactory(this, Util.getUserAgent(this, "ExoPlayerDemo"))
         exoPlayer = ExoPlayerFactory.newSimpleInstance(this, trackSelector)
         playerView.player = exoPlayer
-
-        val dataSourceFactory = DefaultDataSourceFactory(this, Util.getUserAgent(this, "ExoPlayerDemo"))
-
+        exoPlayer!!.playWhenReady = true
         val mediaSource = HlsMediaSource.Factory(dataSourceFactory)
             .setAllowChunklessPreparation(true)   //加速启动
-            .createMediaSource(uri)
+            .createMediaSource(uris[uriIndex])
 
         exoPlayer!!.prepare(mediaSource)
-        exoPlayer!!.playWhenReady = true
         exoPlayer!!.addListener(object : Player.EventListener {
             override fun onPlayerError(error: ExoPlaybackException?) {
                 error?.printStackTrace()
             }
 
             override fun onPlayerStateChanged(playWhenReady: Boolean, playbackState: Int) {
-                if (playWhenReady && trackSelectContainer.isEmpty()) {
+                if (playbackState == Player.STATE_READY && playWhenReady) {
                     initTrackSelectBtn(trackSelector, dataSourceFactory)
                 }
             }
         })
 
-        val debugTextViewHelper = DebugTextViewHelper(exoPlayer!!, debugText)
-        debugTextViewHelper.start()
+        debugTextViewHelper = DebugTextViewHelper(exoPlayer!!, debugText)
+        debugTextViewHelper?.start()
     }
 
+    /**
+     * 获取分辨率列表，点击切换
+     */
     private fun initTrackSelectBtn(trackSelector: DefaultTrackSelector, dataSourceFactory: DefaultDataSourceFactory) {
+        trackSelectContainer?.removeAllViews()
         val defaultTrackNameProvider = DefaultTrackNameProvider(resources)   //获取分辨率的名字
         val parameters = trackSelector.parameters
         val currentMappedTrackInfo = trackSelector.currentMappedTrackInfo
@@ -98,8 +154,6 @@ class MainActivity : AppCompatActivity() {
                         val btn = Button(this)
                         btn.text = defaultTrackNameProvider.getTrackName(group!!.getFormat(trackIndex))
                         btn.setOnClickListener {
-                            Toast.makeText(this, "groupIndex:$groupIndex,trackIndex:$trackIndex", Toast.LENGTH_SHORT)
-                                .show()
                             val builder: DefaultTrackSelector.ParametersBuilder? = parameters?.buildUpon()
                             builder?.clearSelectionOverrides()
                             val selectionOverride = DefaultTrackSelector.SelectionOverride(groupIndex, trackIndex)
@@ -111,17 +165,17 @@ class MainActivity : AppCompatActivity() {
                         btn1.text = "点击下载"
                         btn1.setOnClickListener { download(btn1, dataSourceFactory, groupIndex, trackIndex) }
                         layout.addView(btn1)
-                        trackSelectContainer.addView(layout)
+                        trackSelectContainer?.addView(layout)
                     }
             }
     }
 
     /**
-     * 下载，一个uri只下载一种格式
+     * 下载，一个uri只保存一种分辨率的文件
      */
     private fun download(btn: Button, dataSourceFactory: DefaultDataSourceFactory, groupIndex: Int, trackIndex: Int) {
         downloadHelper =
-            DownloadHelper.forHls(uri, dataSourceFactory, DefaultRenderersFactory(this))
+            DownloadHelper.forHls(uris[uriIndex], dataSourceFactory, DefaultRenderersFactory(this))
         downloadHelper?.prepare(object : DownloadHelper.Callback {
             override fun onPrepared(helper: DownloadHelper?) {
                 val mappedTrackInfo = helper?.getMappedTrackInfo(0)
@@ -151,7 +205,7 @@ class MainActivity : AppCompatActivity() {
         val timer = Timer()
         val timerTask = object : TimerTask() {
             override fun run() {
-                val download = (application as App).videoDownloadManager.downloadTracker.getDownload(uri)
+                val download = downloadTracker.getDownload(uris[uriIndex])
 
                 when {
                     download?.state == Download.STATE_DOWNLOADING -> runOnUiThread {
@@ -161,7 +215,7 @@ class MainActivity : AppCompatActivity() {
                         runOnUiThread {
                             Toast.makeText(this@MainActivity, "下载完成", Toast.LENGTH_LONG).show()
                             btn.text = "下载完成"
-                            playDownloadBtn.visibility = View.VISIBLE
+                            loadHasDownloads()
                         }
                         timer.cancel()
                     }
@@ -175,13 +229,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
         var isRunTask = false
-        (application as App).videoDownloadManager.downloadTracker.addListener(object : VideoDownloadTracker.Listener {
+        downloadTracker.addListener(object : VideoDownloadTracker.Listener {
             override fun onDownloadsChanged() {
                 if (!isRunTask) {
                     timer.schedule(timerTask, 1000, 1000)
                     isRunTask = true
-                } else {
-
                 }
             }
         })
@@ -199,12 +251,23 @@ class MainActivity : AppCompatActivity() {
     /**
      * 播放下载内容
      */
-    private fun playDownloadContent() {
-        val downloadRequest = (application as App).videoDownloadManager.downloadTracker.getDownloadRequest(uri)
+    private fun playDownloadContent(uri: Uri) {
+        val downloadRequest = downloadTracker.getDownloadRequest(uri)
         val dataSourceFactory =
-            DefaultDataSourceFactory(this, Util.getUserAgent(this, "ExoPlayerDemo"))
+            CacheDataSourceFactory((application as App).videoDownloadManager.downloadCache,(application as App).videoDownloadManager.buildHttpDataSourceFactory)
         val mediaSource = DownloadHelper.createMediaSource(downloadRequest, dataSourceFactory)
         exoPlayer?.prepare(mediaSource)
-        exoPlayer?.playWhenReady = true
+    }
+
+    private fun loadHasDownloads() {
+        downloadContainer?.removeAllViews()
+        uris.forEach { uri ->
+            if (downloadTracker.isDownloaded(uri)) {
+                val btn = Button(this)
+                btn.text = uri.toString()
+                btn.setOnClickListener { playDownloadContent(uri) }
+                downloadContainer?.addView(btn)
+            }
+        }
     }
 }
