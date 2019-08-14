@@ -18,9 +18,11 @@ import com.google.android.exoplayer2.offline.Download
 import com.google.android.exoplayer2.offline.DownloadHelper
 import com.google.android.exoplayer2.offline.DownloadRequest
 import com.google.android.exoplayer2.offline.DownloadService
+import com.google.android.exoplayer2.source.TrackGroupArray
 import com.google.android.exoplayer2.source.hls.HlsMediaSource
 import com.google.android.exoplayer2.trackselection.DefaultTrackSelector
-import com.google.android.exoplayer2.trackselection.MappingTrackSelector.MappedTrackInfo.RENDERER_SUPPORT_NO_TRACKS
+import com.google.android.exoplayer2.trackselection.MappingTrackSelector.MappedTrackInfo.*
+import com.google.android.exoplayer2.trackselection.TrackSelectionArray
 import com.google.android.exoplayer2.ui.DebugTextViewHelper
 import com.google.android.exoplayer2.ui.DefaultTrackNameProvider
 import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory
@@ -34,7 +36,7 @@ import java.util.*
 class MainActivity : AppCompatActivity() {
 
     private val uris = arrayOf(
-        Uri.parse("http://res.uquabc.com/HLS/playlist.m3u8"),
+        Uri.parse("http://res.uquabc.com/HLS_Apple/all.m3u8"),
         Uri.parse("https://content.jwplatform.com/manifests/IPYHGrEj.m3u8")
     )
     private var downloadHelper: DownloadHelper? = null
@@ -105,7 +107,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initExoPlayer() {
-        //轨道选择
+        //轨道选择，包括音频轨道和视频轨道
         val trackSelector = DefaultTrackSelector()
 
         val dataSourceFactory = DefaultDataSourceFactory(this, Util.getUserAgent(this, "ExoPlayerDemo"))
@@ -127,6 +129,14 @@ class MainActivity : AppCompatActivity() {
                     initTrackSelectBtn(trackSelector, dataSourceFactory)
                 }
             }
+
+            override fun onTracksChanged(trackGroups: TrackGroupArray, trackSelections: TrackSelectionArray) {
+                val format = trackSelections.get(RENDERER_SUPPORT_NO_TRACKS)?.selectedFormat
+                runOnUiThread {
+                    Toast.makeText(this@MainActivity, "当前分辨率:${format?.width}x${format?.height}", Toast.LENGTH_SHORT)
+                        .show()
+                }
+            }
         })
 
         debugTextViewHelper = DebugTextViewHelper(exoPlayer!!, debugText)
@@ -141,6 +151,8 @@ class MainActivity : AppCompatActivity() {
         val defaultTrackNameProvider = DefaultTrackNameProvider(resources)   //获取分辨率的名字
         val parameters = trackSelector.parameters
         val currentMappedTrackInfo = trackSelector.currentMappedTrackInfo
+        //RENDERER_SUPPORT_UNSUPPORTED_TRACK：:获取音频轨道
+        //RENDERER_SUPPORT_NO_TRACKS：获取视频轨道
         val trackGroups = currentMappedTrackInfo?.getTrackGroups(RENDERER_SUPPORT_NO_TRACKS)
         val length: Int = trackGroups?.length ?: 0
         (0 until length)
@@ -254,7 +266,10 @@ class MainActivity : AppCompatActivity() {
     private fun playDownloadContent(uri: Uri) {
         val downloadRequest = downloadTracker.getDownloadRequest(uri)
         val dataSourceFactory =
-            CacheDataSourceFactory((application as App).videoDownloadManager.downloadCache,(application as App).videoDownloadManager.buildHttpDataSourceFactory)
+            CacheDataSourceFactory(
+                (application as App).videoDownloadManager.downloadCache,
+                (application as App).videoDownloadManager.buildHttpDataSourceFactory
+            )
         val mediaSource = DownloadHelper.createMediaSource(downloadRequest, dataSourceFactory)
         exoPlayer?.prepare(mediaSource)
     }
