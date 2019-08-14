@@ -8,11 +8,8 @@ import com.google.android.exoplayer2.offline.DefaultDownloaderFactory
 import com.google.android.exoplayer2.offline.DownloadManager
 import com.google.android.exoplayer2.offline.DownloaderConstructorHelper
 import com.google.android.exoplayer2.scheduler.Requirements
-import com.google.android.exoplayer2.upstream.DefaultHttpDataSourceFactory
-import com.google.android.exoplayer2.upstream.HttpDataSource
-import com.google.android.exoplayer2.upstream.cache.Cache
-import com.google.android.exoplayer2.upstream.cache.NoOpCacheEvictor
-import com.google.android.exoplayer2.upstream.cache.SimpleCache
+import com.google.android.exoplayer2.upstream.*
+import com.google.android.exoplayer2.upstream.cache.*
 import com.google.android.exoplayer2.util.Util
 import java.io.File
 
@@ -35,7 +32,7 @@ class VideoDownloadManager(val context: Context) {
     }
 
     val downloadTracker: VideoDownloadTracker by lazy {
-        val downloadTracker = VideoDownloadTracker(context, buildHttpDataSourceFactory, downloadManager)
+        val downloadTracker = VideoDownloadTracker(context, buildDataSourceFactory, downloadManager)
         downloadTracker
     }
 
@@ -58,8 +55,23 @@ class VideoDownloadManager(val context: Context) {
         downloadCache
     }
 
-    val buildHttpDataSourceFactory: HttpDataSource.Factory by lazy {
+    private val buildHttpDataSourceFactory: HttpDataSource.Factory by lazy {
         val factory = DefaultHttpDataSourceFactory(userAgent)
+        factory
+    }
+
+    private fun buildReadOnlyCacheDataSource(
+        upstreamFactory: DataSource.Factory,
+        cache: Cache
+    ): CacheDataSourceFactory {
+        return CacheDataSourceFactory(
+            cache, upstreamFactory, FileDataSourceFactory(), null, CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR, null
+        )
+    }
+
+    val buildDataSourceFactory: DataSource.Factory by lazy {
+        val upstreamFactory = DefaultDataSourceFactory(context, buildHttpDataSourceFactory)
+        val factory = buildReadOnlyCacheDataSource(upstreamFactory, downloadCache)
         factory
     }
 

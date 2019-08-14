@@ -25,6 +25,7 @@ import com.google.android.exoplayer2.trackselection.MappingTrackSelector.MappedT
 import com.google.android.exoplayer2.trackselection.TrackSelectionArray
 import com.google.android.exoplayer2.ui.DebugTextViewHelper
 import com.google.android.exoplayer2.ui.DefaultTrackNameProvider
+import com.google.android.exoplayer2.upstream.DataSource
 import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory
 import com.google.android.exoplayer2.upstream.cache.CacheDataSourceFactory
 import com.google.android.exoplayer2.util.Util
@@ -106,11 +107,22 @@ class MainActivity : AppCompatActivity() {
         debugTextViewHelper?.stop()
     }
 
+    override fun onPause() {
+        super.onPause()
+        playerView.onPause()
+        exoPlayer?.playWhenReady = false
+    }
+
+    override fun onResume() {
+        super.onResume()
+        playerView.onResume()
+    }
+
     private fun initExoPlayer() {
         //轨道选择，包括音频轨道和视频轨道
         val trackSelector = DefaultTrackSelector()
+        val dataSourceFactory = (application as App).videoDownloadManager.buildDataSourceFactory
 
-        val dataSourceFactory = DefaultDataSourceFactory(this, Util.getUserAgent(this, "ExoPlayerDemo"))
         exoPlayer = ExoPlayerFactory.newSimpleInstance(this, trackSelector)
         playerView.player = exoPlayer
         exoPlayer!!.playWhenReady = true
@@ -146,7 +158,7 @@ class MainActivity : AppCompatActivity() {
     /**
      * 获取分辨率列表，点击切换
      */
-    private fun initTrackSelectBtn(trackSelector: DefaultTrackSelector, dataSourceFactory: DefaultDataSourceFactory) {
+    private fun initTrackSelectBtn(trackSelector: DefaultTrackSelector, dataSourceFactory: DataSource.Factory) {
         trackSelectContainer?.removeAllViews()
         val defaultTrackNameProvider = DefaultTrackNameProvider(resources)   //获取分辨率的名字
         val parameters = trackSelector.parameters
@@ -185,7 +197,7 @@ class MainActivity : AppCompatActivity() {
     /**
      * 下载，一个uri只保存一种分辨率的文件
      */
-    private fun download(btn: Button, dataSourceFactory: DefaultDataSourceFactory, groupIndex: Int, trackIndex: Int) {
+    private fun download(btn: Button, dataSourceFactory: DataSource.Factory, groupIndex: Int, trackIndex: Int) {
         downloadHelper =
             DownloadHelper.forHls(uris[uriIndex], dataSourceFactory, DefaultRenderersFactory(this))
         downloadHelper?.prepare(object : DownloadHelper.Callback {
@@ -265,12 +277,10 @@ class MainActivity : AppCompatActivity() {
      */
     private fun playDownloadContent(uri: Uri) {
         val downloadRequest = downloadTracker.getDownloadRequest(uri)
-        val dataSourceFactory =
-            CacheDataSourceFactory(
-                (application as App).videoDownloadManager.downloadCache,
-                (application as App).videoDownloadManager.buildHttpDataSourceFactory
-            )
-        val mediaSource = DownloadHelper.createMediaSource(downloadRequest, dataSourceFactory)
+        val mediaSource = DownloadHelper.createMediaSource(
+            downloadRequest,
+            (application as App).videoDownloadManager.buildDataSourceFactory
+        )
         exoPlayer?.prepare(mediaSource)
     }
 
